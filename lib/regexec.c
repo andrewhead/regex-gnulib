@@ -39,7 +39,7 @@ static reg_errcode_t re_search_internal (const regex_t *preg,
 					 const char *string, Idx length,
 					 Idx start, Idx last_start, Idx stop,
 					 size_t nmatch, regmatch_t pmatch[],
-					 int eflags) internal_function;
+					 int eflags, bool final) internal_function;
 static regoff_t re_search_2_stub (struct re_pattern_buffer *bufp,
 				  const char *string1, Idx length1,
 				  const char *string2, Idx length2,
@@ -50,7 +50,7 @@ static regoff_t re_search_stub (struct re_pattern_buffer *bufp,
 				const char *string, Idx length, Idx start,
 				regoff_t range, Idx stop,
 				struct re_registers *regs,
-				bool ret_len) internal_function;
+				bool ret_len, bool final) internal_function;
 static unsigned re_copy_regs (struct re_registers *regs, regmatch_t *pmatch,
                               Idx nregs, int regs_allocated) internal_function;
 static reg_errcode_t prune_impossible_nodes (re_match_context_t *mctx)
@@ -243,10 +243,10 @@ regexec (const regex_t *_Restrict_ preg, const char *_Restrict_ string,
   lock_lock (dfa->lock);
   if (preg->no_sub)
     err = re_search_internal (preg, string, length, start, length,
-			      length, 0, NULL, eflags);
+			      length, 0, NULL, eflags, false);
   else
     err = re_search_internal (preg, string, length, start, length,
-			      length, nmatch, pmatch, eflags);
+			      length, nmatch, pmatch, eflags, false);
   lock_unlock (dfa->lock);
   return err != REG_NOERROR;
 }
@@ -304,7 +304,7 @@ regoff_t
 re_match (struct re_pattern_buffer *bufp, const char *string, Idx length,
 	  Idx start, struct re_registers *regs)
 {
-  return re_search_stub (bufp, string, length, start, 0, length, regs, true);
+  return re_search_stub (bufp, string, length, start, 0, length, regs, true, true);
 }
 #ifdef _LIBC
 weak_alias (__re_match, re_match)
@@ -312,10 +312,10 @@ weak_alias (__re_match, re_match)
 
 regoff_t
 re_search (struct re_pattern_buffer *bufp, const char *string, Idx length,
-	   Idx start, regoff_t range, struct re_registers *regs)
+	   Idx start, regoff_t range, struct re_registers *regs, bool final)
 {
   return re_search_stub (bufp, string, length, start, range, length, regs,
-			 false);
+			 false, final);
 }
 #ifdef _LIBC
 weak_alias (__re_search, re_search)
@@ -382,7 +382,7 @@ re_search_2_stub (struct re_pattern_buffer *bufp, const char *string1,
     str = string1;
 
   rval = re_search_stub (bufp, str, len, start, range, stop, regs,
-			 ret_len);
+			 ret_len, false);
   re_free (s);
   return rval;
 }
@@ -396,7 +396,7 @@ static regoff_t
 internal_function
 re_search_stub (struct re_pattern_buffer *bufp, const char *string, Idx length,
 		Idx start, regoff_t range, Idx stop, struct re_registers *regs,
-		bool ret_len)
+		bool ret_len, bool final)
 {
   reg_errcode_t result;
   regmatch_t *pmatch;
@@ -450,7 +450,7 @@ re_search_stub (struct re_pattern_buffer *bufp, const char *string, Idx length,
     }
 
   result = re_search_internal (bufp, string, length, start, last_start, stop,
-			       nregs, pmatch, eflags);
+			       nregs, pmatch, eflags, final);
 
   rval = 0;
 
@@ -612,7 +612,7 @@ static reg_errcode_t
 __attribute_warn_unused_result__ internal_function
 re_search_internal (const regex_t *preg, const char *string, Idx length,
 		    Idx start, Idx last_start, Idx stop, size_t nmatch,
-		    regmatch_t pmatch[], int eflags)
+		    regmatch_t pmatch[], int eflags, bool final)
 {
   reg_errcode_t err;
   const re_dfa_t *dfa = preg->buffer;
@@ -856,8 +856,9 @@ re_search_internal (const regex_t *preg, const char *string, Idx length,
 		    goto free_return;
 		  match_last = -1;
 		}
-	      else
+	      else {
 		break; /* We found a match.  */
+              }
 	    }
 	}
 
@@ -873,6 +874,19 @@ re_search_internal (const regex_t *preg, const char *string, Idx length,
   if (nmatch > 0)
     {
       Idx reg_idx;
+
+      if (final) {
+        /* The format of an output line will be:
+           <N>: (<s>,)+\t<string>
+           where N is the number of states that happened in the match,
+           (<s>,)+ is a list of state indexes, and <string> is the string
+           that was matched (this is output by grep). */
+        printf("%zu: ", mctx.state_log_top);
+        for (unsigned long i = 0; i < mctx.state_log_top; i++) {
+          printf("%zu,", mctx.state_log[i]->hash);
+        }
+        printf("\t");
+      }
 
       /* Initialize registers.  */
       for (reg_idx = 1; reg_idx < nmatch; ++reg_idx)
@@ -1187,7 +1201,7 @@ check_matching (re_match_context_t *mctx, bool fl_longest_match,
 
       if (cur_state->halt)
 	{
-	  /* Reached a halt state.
+          /* Reached a halt state.
 	     Check the halt state can satisfy the current context.  */
 	  if (!cur_state->has_constraint
 	      || check_halt_state_context (mctx, cur_state,
@@ -1199,8 +1213,9 @@ check_matching (re_match_context_t *mctx, bool fl_longest_match,
 
 	      /* We found a match, do not modify match_first below.  */
 	      p_match_first = NULL;
-	      if (!fl_longest_match)
+	      if (!fl_longest_match) {
 		break;
+              }
 	    }
 	}
     }

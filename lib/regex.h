@@ -5,16 +5,16 @@
    This file is part of the GNU C Library.
 
    The GNU C Library is free software; you can redistribute it and/or
-   modify it under the terms of the GNU Lesser General Public
+   modify it under the terms of the GNU General Public
    License as published by the Free Software Foundation; either
-   version 2.1 of the License, or (at your option) any later version.
+   version 3 of the License, or (at your option) any later version.
 
    The GNU C Library is distributed in the hope that it will be useful,
    but WITHOUT ANY WARRANTY; without even the implied warranty of
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-   Lesser General Public License for more details.
+   General Public License for more details.
 
-   You should have received a copy of the GNU Lesser General Public
+   You should have received a copy of the GNU General Public
    License along with the GNU C Library; if not, see
    <http://www.gnu.org/licenses/>.  */
 
@@ -22,6 +22,7 @@
 #define _REGEX_H 1
 
 #include <sys/types.h>
+#include <stdbool.h>
 
 /* Allow the use in C++ code.  */
 #ifdef __cplusplus
@@ -554,7 +555,7 @@ extern int re_compile_fastmap (struct re_pattern_buffer *__buffer);
 extern regoff_t re_search (struct re_pattern_buffer *__buffer,
 			   const char *__string, regoff_t __length,
 			   regoff_t __start, regoff_t __range,
-			   struct re_registers *__regs);
+			   struct re_registers *__regs, bool last);
 
 
 /* Like 're_search', but search in the concatenation of STRING1 and
